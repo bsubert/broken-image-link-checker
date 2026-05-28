@@ -1,0 +1,14 @@
+{
+    "name": "website-image-crawler",
+    "version": "1.0.0",
+    "description": "Crawl a sitemap and report broken images",
+    "main": "checkImages.js",
+    "scripts": {
+        "start": "node checkImages.js"
+    },
+    "dependencies": {
+        "playwright": "^1.47.0",
+        "xml2js": "^0.6.2",
+        "p-limit": "3.1.0"
+    }
+}

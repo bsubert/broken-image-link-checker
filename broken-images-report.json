@@ -1,0 +1,6 @@
+[
+  {
+    "page": "https://www.caravaning.info",
+    "error": "page.goto: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"https://www.caravaning.info/\", waiting until \"networkidle\"\u001b[22m\n"
+  }
+]
