@@ -42,7 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Crawl site for broken images
-        uses: your-org/website-image-crawler@v1
+        uses: bsubert/broken-image-link-checker@v1
         with:
           sitemap-url: ${{ secrets.SITEMAP_URL }}
 
@@ -87,7 +87,7 @@ Each Chromium context uses ~50–100 MB of RAM.
 **Passive report (don't fail the build):**
 
 ```yaml
-- uses: your-org/website-image-crawler@v1
+- uses: bsubert/broken-image-link-checker@v1
   with:
     sitemap-url: ${{ secrets.SITEMAP_URL }}
     fail-on-issues: 'false'
@@ -101,7 +101,7 @@ Each Chromium context uses ~50–100 MB of RAM.
 **Higher concurrency on staging:**
 
 ```yaml
-- uses: your-org/website-image-crawler@v1
+- uses: bsubert/broken-image-link-checker@v1
   with:
     sitemap-url: ${{ secrets.STAGING_SITEMAP_URL }}
     concurrency: '10'
@@ -116,7 +116,7 @@ Each Chromium context uses ~50–100 MB of RAM.
     path: ~/.cache/ms-playwright
     key: playwright-${{ runner.os }}
 
-- uses: your-org/website-image-crawler@v1
+- uses: bsubert/broken-image-link-checker@v1
   with:
     sitemap-url: ${{ secrets.SITEMAP_URL }}
 ```
