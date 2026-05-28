@@ -143,8 +143,8 @@ If you'd rather run the crawler locally or in a non-GitHub CI:
 ### Installation
 
 ```bash
-git clone https://github.com/your-org/website-image-crawler.git
-cd website-image-crawler
+git clone https://github.com/bsubert/broken-image-link-checker.git
+cd broken-image-link-checker
 npm install
 npx playwright install chromium
 ```
