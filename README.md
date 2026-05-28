@@ -1,10 +1,10 @@
 # Website Image Crawler
 
-A Node.js script that crawls every page listed in a website's `sitemap.xml` and reports broken or missing images. Built on top of [Playwright](https://playwright.dev/), it catches both HTTP-level failures (404s, 5xx, CORS errors) and DOM-level failures (`<img>` elements that never produced a viewable picture), while correctly handling lazy-loaded images.
+A reusable GitHub Action (and standalone Node.js script) that crawls every page listed in a website's `sitemap.xml` and reports broken or missing images. Built on top of [Playwright](https://playwright.dev/), it catches both HTTP-level failures (404s, 5xx, CORS errors) and DOM-level failures (`<img>` elements that never produced a viewable picture), while correctly handling lazy-loaded images.
 
 ## Why this exists
 
-Manually checking image health on a site with hundreds of pages is impractical. This script automates the crawl, runs pages in parallel, and produces a JSON report you can diff in CI or hand to content editors.
+Manually checking image health on a site with hundreds of pages is impractical. This project automates the crawl, runs pages in parallel, and produces a JSON report you can upload as a CI artifact, diff between runs, or hand to content editors.
 
 ## Features
 
@@ -13,59 +13,180 @@ Manually checking image health on a site with hundreds of pages is impractical. 
 - **Network-level detection** — logs any image request returning HTTP 4xx/5xx or failing at the transport layer
 - **DOM-level detection** — flags `<img>` elements where `naturalWidth === 0` or `complete === false`
 - **Lazy-load aware** — slow-scrolls each page, promotes `loading="lazy"` to `eager`, and swaps `data-src` into `src` for common JS lazy-loaders (LazySizes, BLazy, Unveil, etc.)
-- **Concurrency control** via `p-limit` — tune throughput vs. server load
+- **Concurrency control** via `p-limit`
 - **False-positive filtering** — only reports DOM failures the browser actually attempted to load, so lazy images inside closed accordions/tabs don't pollute the report
-- Outputs a single `broken-images-report.json` with per-page detail
+- Outputs a single JSON report
+- Ships as a **composite GitHub Action** for drop-in use in other repos
 
-## Requirements
+---
 
-- Node.js 18 or newer (uses the built-in `fetch`)
-- ~1 GB free RAM at default concurrency
+## Use as a GitHub Action (recommended)
 
-## Installation
+### Quick start
 
-```bash
-npm install --save-dev playwright xml2js p-limit@3
-npx playwright install chromium
+In the **consuming repo**:
+
+1. Add your sitemap URL as a repository secret: **Settings → Secrets and variables → Actions → New repository secret**, name `SITEMAP_URL`.
+2. Create `.github/workflows/image-check.yml`:
+
+```yaml
+name: Image Health Check
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # every Monday 06:00 UTC
+  workflow_dispatch:       # allow manual runs
+
+jobs:
+  check-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Crawl site for broken images
+        uses: your-org/website-image-crawler@v1
+        with:
+          sitemap-url: ${{ secrets.SITEMAP_URL }}
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: broken-images-report
+          path: broken-images-report.json
 ```
 
-> **Note:** `p-limit@3` is pinned because v4+ is ESM-only and this project uses CommonJS. If you prefer ESM, install the latest `p-limit` and convert the script accordingly.
+That's it. The job will fail if any broken images are found, and the JSON report is always uploaded as an artifact.
 
-## Configuration
+### Action inputs
 
-Open `checkImages.js` and adjust the constants at the top:
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `sitemap-url` | ✅ | — | Full URL of the `sitemap.xml` to crawl |
+| `concurrency` | ❌ | `5` | Number of pages crawled in parallel |
+| `page-timeout-ms` | ❌ | `30000` | Per-page navigation timeout in milliseconds |
+| `report-path` | ❌ | `broken-images-report.json` | Path (relative to the workspace) where the JSON report is written |
+| `fail-on-issues` | ❌ | `true` | If `'true'`, the step exits with status 1 when any page has issues |
 
-| Constant | Default | Description |
-|---|---|---|
-| `SITEMAP_URL` | `https://example.com/sitemap.xml` | Full URL to your sitemap |
-| `CONCURRENCY` | `5` | Number of pages crawled in parallel |
-| `PAGE_TIMEOUT_MS` | `30_000` | Per-page navigation timeout |
+### Action outputs
+
+| Output | Description |
+|---|---|
+| `report-path` | Path to the generated JSON report (echoes the input) |
 
 ### Tuning concurrency
 
 | Value | Use case |
 |---|---|
-| 2–3 | Shared hosting, modest laptop |
+| 2–3 | Shared hosting, modest CI runner |
 | 5 | Sensible default |
-| 10+ | Beefy CI runner, own staging server |
+| 10+ | Beefy runner, your own staging server |
 
 Each Chromium context uses ~50–100 MB of RAM.
 
-## Usage
+### Advanced examples
+
+**Passive report (don't fail the build):**
+
+```yaml
+- uses: your-org/website-image-crawler@v1
+  with:
+    sitemap-url: ${{ secrets.SITEMAP_URL }}
+    fail-on-issues: 'false'
+
+- uses: actions/upload-artifact@v4
+  with:
+    name: image-report
+    path: broken-images-report.json
+```
+
+**Higher concurrency on staging:**
+
+```yaml
+- uses: your-org/website-image-crawler@v1
+  with:
+    sitemap-url: ${{ secrets.STAGING_SITEMAP_URL }}
+    concurrency: '10'
+    page-timeout-ms: '60000'
+```
+
+**Cache Playwright browser between runs (faster CI):**
+
+```yaml
+- uses: actions/cache@v4
+  with:
+    path: ~/.cache/ms-playwright
+    key: playwright-${{ runner.os }}
+
+- uses: your-org/website-image-crawler@v1
+  with:
+    sitemap-url: ${{ secrets.SITEMAP_URL }}
+```
+
+### Version pinning
+
+| Reference | Behavior |
+|---|---|
+| `@v1` | Floating major — receives minor/patch updates automatically (recommended) |
+| `@v1.2.0` | Exact version — never updates without a code change |
+| `@main` | Latest commit on main — **not recommended**, can break without warning |
+
+---
+
+## Use as a standalone script
+
+If you'd rather run the crawler locally or in a non-GitHub CI:
+
+### Requirements
+
+- Node.js 18 or newer
+- ~1 GB free RAM at default concurrency
+
+### Installation
 
 ```bash
+git clone https://github.com/your-org/website-image-crawler.git
+cd website-image-crawler
+npm install
+npx playwright install chromium
+```
+
+### Run
+
+All configuration comes from environment variables:
+
+```bash
+SITEMAP_URL=https://example.com/sitemap.xml node checkImages.js
+```
+
+With overrides:
+
+```bash
+SITEMAP_URL=https://example.com/sitemap.xml \
+CONCURRENCY=10 \
+PAGE_TIMEOUT_MS=60000 \
+REPORT_PATH=./reports/images.json \
+FAIL_ON_ISSUES=true \
 node checkImages.js
 ```
 
-You'll see progress every 25 pages:
+| Env var | Required | Default |
+|---|---|---|
+| `SITEMAP_URL` | ✅ | — |
+| `CONCURRENCY` | ❌ | `5` |
+| `PAGE_TIMEOUT_MS` | ❌ | `30000` |
+| `REPORT_PATH` | ❌ | `broken-images-report.json` |
+| `FAIL_ON_ISSUES` | ❌ | `false` (script default; the Action defaults to `true`) |
 
+### Local dev with `.env`
+
+For convenience, add `dotenv` and require it at the top of the script:
+
+```bash
+npm install --save-dev dotenv
 ```
-Checking 870 pages with concurrency 5...
-  25/870 pages checked
-  50/870 pages checked
-  ...
-Done. 14 pages with issues. See broken-images-report.json
-```
+
+Create a `.env` (gitignored!) with your variables, then run `node checkImages.js`.
+
+---
 
 ## Understanding the report
 
@@ -94,11 +215,13 @@ Done. 14 pages with issues. See broken-images-report.json
 | `skippedLazy` | Count of `<img>` elements that looked broken but were never requested — almost always lazy images inside hidden UI (carousels, accordions, modals). Informational only. |
 | `error` | If page-level navigation failed (timeout, DNS, etc.), the error message appears here instead |
 
-**How to triage:**
+### Triage guide
 
-- An entry in **both** `networkFailures` and `domFailures` for the same URL → genuine broken image. The status code tells you where to fix it.
+- Entry in **both** `networkFailures` and `domFailures` for the same URL → genuine broken image. The status code tells you where to fix it.
 - Only in `networkFailures` → likely a CSS background or `<picture>` source. Search your stylesheets/templates for the URL.
 - Only in `domFailures` (rare with filtering enabled) → the `<img>` has an empty/malformed `src`, or a data URI failed to decode.
+
+---
 
 ## How it works
 
@@ -115,12 +238,28 @@ For each URL in the sitemap, the script:
 
 A shared `browser` instance is reused across all pages; one `context` per URL provides isolation without the cost of relaunching Chromium.
 
+---
+
 ## Limitations
 
 - **Sitemap index files** (`<sitemapindex>` instead of `<urlset>`) are not recursively parsed. Extend `getUrlsFromSitemap` if your site uses one.
 - **Infinite-scroll pages** are not handled — the scroller stops at the initial `document.body.scrollHeight`.
 - **Carousel/slider images** that only mount on user interaction won't be checked.
 - **Authenticated pages** require adding `storageState` or login steps to `newContext`.
+- **Private sitemaps** behind auth need a custom fetch header in `getUrlsFromSitemap`.
+
+---
+
+## Contributing
+
+Issues and PRs welcome. For releases:
+
+```bash
+git tag v1.x.y
+git push origin v1.x.y
+# Move the floating major tag so consumers on @v1 get the update
+git tag -f v1 && git push -f origin v1
+```
 
 ## License
 
