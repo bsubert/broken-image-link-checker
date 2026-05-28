@@ -10,11 +10,11 @@ Manually checking image health on a site with hundreds of pages is impractical. 
 
 - Pulls the full URL list from `sitemap.xml` automatically
 - Runs a real Chromium browser per page (catches JS-rendered content, `<picture>`, `srcset`, CSS `background-image`)
-- **Network-level detection** — logs any image request returning HTTP 4xx/5xx or failing at the transport layer
-- **DOM-level detection** — flags `<img>` elements where `naturalWidth === 0` or `complete === false`
-- **Lazy-load aware** — slow-scrolls each page, promotes `loading="lazy"` to `eager`, and swaps `data-src` into `src` for common JS lazy-loaders (LazySizes, BLazy, Unveil, etc.)
+- **Network-level detection** - logs any image request returning HTTP 4xx/5xx or failing at the transport layer
+- **DOM-level detection** - flags `<img>` elements where `naturalWidth === 0` or `complete === false`
+- **Lazy-load aware** - slow-scrolls each page, promotes `loading="lazy"` to `eager`, and swaps `data-src` into `src` for common JS lazy-loaders (LazySizes, BLazy, Unveil, etc.)
 - **Concurrency control** via `p-limit`
-- **False-positive filtering** — only reports DOM failures the browser actually attempted to load, so lazy images inside closed accordions/tabs don't pollute the report
+- **False-positive filtering** - only reports DOM failures the browser actually attempted to load, so lazy images inside closed accordions/tabs don't pollute the report
 - Outputs a single JSON report
 - Ships as a **composite GitHub Action** for drop-in use in other repos
 
@@ -60,7 +60,7 @@ That's it. The job will fail if any broken images are found, and the JSON report
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `sitemap-url` | ✅ | — | Full URL of the `sitemap.xml` to crawl |
+| `sitemap-url` | ✅ | - | Full URL of the `sitemap.xml` to crawl |
 | `concurrency` | ❌ | `5` | Number of pages crawled in parallel |
 | `page-timeout-ms` | ❌ | `30000` | Per-page navigation timeout in milliseconds |
 | `report-path` | ❌ | `broken-images-report.json` | Path (relative to the workspace) where the JSON report is written |
@@ -125,9 +125,9 @@ Each Chromium context uses ~50–100 MB of RAM.
 
 | Reference | Behavior |
 |---|---|
-| `@v1` | Floating major — receives minor/patch updates automatically (recommended) |
-| `@v1.2.0` | Exact version — never updates without a code change |
-| `@main` | Latest commit on main — **not recommended**, can break without warning |
+| `@v1` | Floating major - receives minor/patch updates automatically (recommended) |
+| `@v1.2.0` | Exact version - never updates without a code change |
+| `@main` | Latest commit on main - **not recommended**, can break without warning |
 
 ---
 
@@ -170,7 +170,7 @@ node checkImages.js
 
 | Env var | Required | Default |
 |---|---|---|
-| `SITEMAP_URL` | ✅ | — |
+| `SITEMAP_URL` | ✅ | `-` |
 | `CONCURRENCY` | ❌ | `5` |
 | `PAGE_TIMEOUT_MS` | ❌ | `30000` |
 | `REPORT_PATH` | ❌ | `broken-images-report.json` |
@@ -212,7 +212,7 @@ Create a `.env` (gitignored!) with your variables, then run `node checkImages.js
 | `page` | URL of the page being checked |
 | `networkFailures` | Image HTTP requests that returned >= 400 or errored. Covers `<img>`, CSS backgrounds, srcset, favicons, etc. |
 | `domFailures` | `<img>` elements that didn't render a viewable picture **and** were actually requested by the browser (filtered to remove lazy-load false positives) |
-| `skippedLazy` | Count of `<img>` elements that looked broken but were never requested — almost always lazy images inside hidden UI (carousels, accordions, modals). Informational only. |
+| `skippedLazy` | Count of `<img>` elements that looked broken but were never requested - almost always lazy images inside hidden UI (carousels, accordions, modals). Informational only. |
 | `error` | If page-level navigation failed (timeout, DNS, etc.), the error message appears here instead |
 
 ### Triage guide
@@ -230,7 +230,7 @@ For each URL in the sitemap, the script:
 1. Opens a fresh browser context (isolated cookies/storage).
 2. Navigates to the page with `waitUntil: 'networkidle'`.
 3. Logs every image request/response via Playwright's `response` and `requestfailed` events.
-4. Slow-scrolls top-to-bottom in 300 px steps with a 250 ms pause, then back to the top — gives `IntersectionObserver`-based lazy loaders time to fire.
+4. Slow-scrolls top-to-bottom in 300 px steps with a 250 ms pause, then back to the top - gives `IntersectionObserver`-based lazy loaders time to fire.
 5. Promotes any remaining `loading="lazy"` images to `eager` and swaps `data-src` → `src`.
 6. Waits for every `<img>` to either `load` or `error`.
 7. Collects DOM failures and filters them against the set of URLs the browser actually requested.
@@ -243,24 +243,11 @@ A shared `browser` instance is reused across all pages; one `context` per URL pr
 ## Limitations
 
 - **Sitemap index files** (`<sitemapindex>` instead of `<urlset>`) are not recursively parsed. Extend `getUrlsFromSitemap` if your site uses one.
-- **Infinite-scroll pages** are not handled — the scroller stops at the initial `document.body.scrollHeight`.
+- **Infinite-scroll pages** are not handled - the scroller stops at the initial `document.body.scrollHeight`.
 - **Carousel/slider images** that only mount on user interaction won't be checked.
 - **Authenticated pages** require adding `storageState` or login steps to `newContext`.
 - **Private sitemaps** behind auth need a custom fetch header in `getUrlsFromSitemap`.
 
 ---
 
-## Contributing
 
-Issues and PRs welcome. For releases:
-
-```bash
-git tag v1.x.y
-git push origin v1.x.y
-# Move the floating major tag so consumers on @v1 get the update
-git tag -f v1 && git push -f origin v1
-```
-
-## License
-
-MIT
