@@ -119,19 +119,94 @@ async function checkPage(browser, url) {
   }
 }
 
+// ---- GitHub Actions reporting helpers ----
+function escapeMd(s) {
+  return String(s).replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+
+function writeGitHubReport(results, totalPages) {
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  const isGitHubActions = !!process.env.GITHUB_ACTIONS;
+
+  if (results.length === 0) {
+    const msg = `✅ Image health check passed — ${totalPages} pages, no issues.`;
+    if (summaryPath) {
+      fs.appendFileSync(summaryPath, `# Image Health Check\n\n${msg}\n`);
+    }
+    return;
+  }
+
+  const totalNetwork = results.reduce((n, r) => n + (r.networkFailures?.length || 0), 0);
+  const totalDom     = results.reduce((n, r) => n + (r.domFailures?.length || 0), 0);
+
+  // 1. Markdown summary on the run page
+  if (summaryPath) {
+    let md = `# ❌ Image Health Check\n\n`;
+    md += `**${results.length}** of **${totalPages}** pages have issues — `;
+    md += `${totalNetwork} network failure(s), ${totalDom} DOM failure(s).\n\n`;
+
+    for (const r of results) {
+      md += `## [${r.page}](${r.page})\n\n`;
+
+      if (r.error) {
+        md += `> ⚠️ Page-level error: \`${escapeMd(r.error)}\`\n\n`;
+        continue;
+      }
+
+      if (r.networkFailures?.length) {
+        md += `### Network failures (${r.networkFailures.length})\n\n`;
+        md += `| Image URL | Status / Error |\n|---|---|\n`;
+        for (const f of r.networkFailures) {
+          md += `| ${escapeMd(f.url)} | ${escapeMd(f.status ?? f.error ?? 'unknown')} |\n`;
+        }
+        md += `\n`;
+      }
+
+      if (r.domFailures?.length) {
+        md += `### DOM failures (${r.domFailures.length})\n\n`;
+        md += `| Image src | Alt text |\n|---|---|\n`;
+        for (const f of r.domFailures) {
+          md += `| ${escapeMd(f.src || '(empty)')} | ${escapeMd(f.alt || '')} |\n`;
+        }
+        md += `\n`;
+      }
+    }
+
+    fs.appendFileSync(summaryPath, md);
+  }
+
+  // 2. Annotations (red/yellow callouts on the run page)
+  if (isGitHubActions) {
+    for (const r of results) {
+      if (r.error) {
+        console.log(`::error title=Page error::${r.page} — ${r.error}`);
+        continue;
+      }
+      for (const f of r.networkFailures || []) {
+        const detail = f.status ? `HTTP ${f.status}` : f.error || 'failed';
+        console.log(`::error title=Broken image (${detail})::${r.page} — ${f.url}`);
+      }
+      for (const f of r.domFailures || []) {
+        // skip if already reported as a network failure to avoid duplicates
+        const dupe = (r.networkFailures || []).some(n => n.url === f.src);
+        if (dupe) continue;
+        console.log(`::warning title=DOM image failure::${r.page} — ${f.src || '(empty src)'}`);
+      }
+    }
+  }
+}
+
 (async () => {
-  const { default: pLimit } = await import("p-limit");
+  const { default: pLimit } = await import('p-limit');
 
   const urls = await getUrlsFromSitemap(SITEMAP_URL);
-  console.log(
-    `Checking ${urls.length} pages with concurrency ${CONCURRENCY}...`,
-  );
+  console.log(`Checking ${urls.length} pages with concurrency ${CONCURRENCY}...`);
 
   const browser = await chromium.launch();
   const limit = pLimit(CONCURRENCY);
   let done = 0;
 
-  const tasks = urls.map((url) =>
+  const tasks = urls.map(url =>
     limit(async () => {
       const result = await checkPage(browser, url);
       done += 1;
@@ -139,20 +214,23 @@ async function checkPage(browser, url) {
         console.log(`  ${done}/${urls.length} pages checked`);
       }
       return result;
-    }),
+    })
   );
 
   const results = (await Promise.all(tasks)).filter(Boolean);
 
   await browser.close();
   fs.writeFileSync(REPORT_PATH, JSON.stringify(results, null, 2));
-  console.log(`Done. ${results.length} pages with issues. See ${REPORT_PATH}`);
+
+  writeGitHubReport(results, urls.length);
+
+  console.log(`\nDone. ${results.length} pages with issues. Report: ${REPORT_PATH}`);
 
   if (FAIL_ON_ISSUES && results.length > 0) {
     console.error(`Failing build: ${results.length} pages have image issues.`);
     process.exit(1);
   }
-})().catch((err) => {
-  console.error("Fatal error:", err);
+})().catch(err => {
+  console.error('Fatal error:', err);
   process.exit(1);
 });
