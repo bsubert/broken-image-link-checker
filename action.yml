@@ -44,7 +44,7 @@ runs:
     - name: Install Playwright Chromium
       shell: bash
       working-directory: ${{ github.action_path }}
-      run: npx playwright install --with-deps chromium
+      run: npx playwright install chromium
 
     - name: Run crawler
       shell: bash
